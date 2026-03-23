@@ -66,7 +66,7 @@ The [Learner Credential Wallet](https://lcw.app) is a mobile app from the DCC th
 
 #### VerifierPlus
 
-VerifierPlus provides public verification tooling and share-link style flows for learners. That capability is valuable but adds operational and security surface area (another public application to harden, monitor, and release). For this PoC we prioritise a stable issuance and claim path first and treat VerifierPlus as a follow-on installation after the core stack is stable, with a draft hostname reserved at `verifier.digitalbadges.scot` when we expose it behind the same nginx ingress pattern.
+VerifierPlus provides public verification tooling and share-link style flows for learners. The reference implementation is at https://verifierplus.org and the LCW is hard-coded to that address. As we are not creating our own version of the LCW for this pilot project, any badge issued will use https://verifierplus.org for verification. For this PoC we will prioritise a stable issuance and claim path first and treat creating our own instance of VerifierPlus as a follow-on installation after the core stack is stable, with a draft hostname reserved at `verifier.digitalbadges.scot` when we expose it behind the same nginx ingress pattern. 
 
 #### Self-hosted OIDF issuer registry
 
