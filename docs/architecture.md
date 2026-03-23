@@ -224,6 +224,19 @@ Demonstrates knowledge covering most or all main areas of a subject/discipline/s
 Demonstrates a critical overview of a subject/discipline/sector, with leading knowledge and understanding at the forefront of one or more specialisms, generated through personal research making a significant contribution to the field. Learners demonstrate substantial authority, high autonomy, and leadership in professional activities. Qualifications include: Doctorate, Professional Development Award, Professional Apprenticeship.  
 `https://scqf.org.uk/support/credit-rating-bodies/level-descriptors/#level-12`
 
+### Example alignment (SCQF Level 5)
+
+```json
+{
+  "type": "Alignment",
+  "targetUrl": "https://scqf.org.uk/support/credit-rating-bodies/level-descriptors/#level-5",
+  "targetName": "SCQF Level 5",
+  "targetCode": "SCQF-5",
+  "targetFramework": "Scottish Credit and Qualifications Framework",
+  "targetDescription": "Demonstrates basic knowledge and a range of simple facts, ideas and theories in a subject/discipline/sector. Learners plan and organise familiar and unfamiliar tasks. Qualifications include: National 5, Awards, National Certificate, National Progression Award, Modern Apprenticeship, SVQ."
+}
+```
+
 **Notes on SCQF Alignment:**
 
 - **targetUrl:** The [level descriptors](https://scqf.org.uk/support/credit-rating-bodies/level-descriptors/) path is the most authoritative per-level reference on the SCQF site; the framework overview page does not offer level-specific anchors. The `#level-N` fragments follow a common deep-linking convention even though the site may use JavaScript-rendered accordions rather than native anchors—verify in a browser before finalising, or use the plain page URL if fragments do not resolve.
