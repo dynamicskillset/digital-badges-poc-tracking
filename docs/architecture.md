@@ -36,20 +36,31 @@ These services are intended to run as containers on a Docker Compose network, so
 
 ## Deployment overview
 
-```text
-[ Browsers / staff / learners ]     [ LCW on devices ]
-              |                              |
-              v                              v
-        TLS at nginx  <----------------------- (HTTPS to api.*)
-              |
-    +---------+---------+-------------------------+
-    |                   |                         |
-    v                   v                         v
- ORCA              Transaction Service     (future: VerifierPlus,
- (apex host)       (api subdomain)          OIDF registry on
-    |                   |                  reserved subdomains)
-    |                   +----> Signing Service (internal only)
-    +---- coordinates / uses Transaction Service for exchange flows
+```{.mermaid format=png}
+flowchart TB
+  subgraph Clients
+    Browsers["Browsers / staff / learners"]
+    LCW["LCW on devices"]
+  end
+
+  Browsers --> Nginx
+  LCW -->|"HTTPS to api.*"| Nginx
+  Nginx["TLS at nginx"]
+
+  Nginx --> ORCA
+  Nginx --> TxService
+  Nginx --> Future
+
+  subgraph Services
+    ORCA["ORCA (apex host)"]
+    TxService["Transaction Service (api subdomain)"]
+    Future["future: VerifierPlus, OIDF registry on reserved subdomains"]
+  end
+
+  TxService --> Signing
+  ORCA -.->|"coordinates / uses for exchange flows"| TxService
+
+  Signing["Signing Service (internal only)"]
 ```
 
 ## Alternatives and ecosystem review
@@ -112,13 +123,51 @@ This section describes how external systems connect for awards, how credential m
 
 Provider systems can trigger an invitation to claim a credential for a defined achievement by calling ORCA’s REST API on the tenant host (see PoC hostnames: `https://<org>.digitalbadges.scot`).
 
+### Integration scenario: My World of Work
+
+My World of Work (MWOW) and similar provider systems integrate with ORCA by storing the tenant base URL, OAuth client credentials, and a mapping from their own badge or course concepts to ORCA achievement IDs. The following flow supports configuration and runtime awarding.
+
+1. **Tenant binding** — MWOW stores the ORCA tenant base URL (e.g. `https://<org>.digitalbadges.scot`) alongside the OAuth `client_id` and `client_secret` registered for that organisation.
+2. **Staff setup** — Content admins use the ORCA admin dashboard to create and configure achievements for the organisation.
+3. **Discovery** — MWOW calls `GET /api/v1/achievements` (paginated) to obtain each achievement’s `id`, plus `name`, `identifier`, and other fields to match internal MWOW badge or course events.
+4. **Configuration** — MWOW persists a mapping from its own domain concepts to `achievementId` (the UUID) per tenant; it may cache and refresh when staff add or change achievements.
+5. **Runtime** — When a learner earns a MWOW-side event, MWOW calls `POST /api/v1/achievements/{achievementId}/award` with the stored UUID and the documented JSON body.
+
+Both discovery and award use the same machine client authentication (see **Authentication** below). The `Host` header (tenant URL) selects the organisation, consistent with ORCA’s tenant resolution. Enforcement details (scopes, which routes accept client credentials) are deployment-specific.
+
+```{.mermaid format=png}
+sequenceDiagram
+  participant Staff as ORCA_staff_UI
+  participant ORCA as ORCA_tenant_API
+  participant MWOW as MyWorldOfWork
+
+  Staff->>ORCA: Create_or_edit_achievements
+  MWOW->>ORCA: GET_/api/v1/achievements_paginated
+  ORCA-->>MWOW: data_with_id_name_identifier
+  Note over MWOW: Store_tenant_URL_client_and_achievementId_map
+  MWOW->>ORCA: POST_/api/v1/achievements/{id}/award
+```
+
+### List achievements endpoint
+
+```http
+GET /api/v1/achievements
+```
+
+Use this endpoint to discover achievement IDs for configuration. Integrators should use `id` (the UUID) as `{achievementId}` in the award path; the separate `identifier` field is a human-facing slug within the organisation, not the value for the API.
+
+- **Query parameters:** `page` (default 1), `pageSize` (default 20, maximum 20), `includeCount=true` to populate `meta.totalCount` and `meta.totalPages`.
+- **Pagination** — The response is paginated. Integrators must iterate pages until all achievements are read if the catalog exceeds 20 items.
+- **Response envelope (v1):** `{ "data": Achievement[], "meta": { "type": "Achievement", "page": number, "pageSize": number, "totalCount"?: number, "totalPages"?: number } }`
+- Each item in `data` is a full achievement record (including nested `achievementConfig`). Use the `id` field for the award endpoint path.
+
 ### Award endpoint
 
 ```http
 POST /api/v1/achievements/{achievementId}/award
 ```
 
-- `achievementId` identifies the Open Badges Achievement (template) to award.
+- `{achievementId}` is the achievement’s `id` (UUID) from the list endpoint, not the human-facing `identifier` string.
 - Request body is JSON:
 
 ```json
