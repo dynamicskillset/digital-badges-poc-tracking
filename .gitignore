@@ -1,3 +1,6 @@
 docs/plans 
 docs/reports
 .DS_Store
+# Environment files (examples are version controlled, rendered files are not)
+.env.signing
+.env.transaction

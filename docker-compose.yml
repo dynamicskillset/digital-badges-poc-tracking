@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Reverse proxy - entry point for all external traffic
+  nginx:
+    image: nginx:alpine
+    container_name: digital-badges-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - transaction-service
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+  # Transaction Service - External API for wallet flows
+  transaction-service:
+    image: skybridgeskills/dcc-transaction-service:latest
+    container_name: digital-badges-transaction
+    env_file:
+      - .env.transaction
+    depends_on:
+      - redis
+      - signing-service
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+  # Signing Service - Internal only, not exposed externally
+  signing-service:
+    image: skybridgeskills/dcc-signing-service:latest
+    container_name: digital-badges-signing
+    env_file:
+      - .env.signing
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+  # Redis - Ephemeral cache
+  redis:
+    image: redis:7-alpine
+    container_name: digital-badges-redis
+    command: redis-server --appendonly no
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+networks:
+  digital-badges-network:
+    driver: bridge
