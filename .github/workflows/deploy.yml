@@ -1,0 +1,117 @@
+name: Deploy to POC Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git ref to deploy (branch, tag, or SHA)'
+        required: true
+        default: 'main'
+
+env:
+  DEPLOY_HOST: ${{ vars.SSH_HOST }}
+  DEPLOY_USER: ${{ vars.SSH_USER }}
+  DEPLOY_DIR: /opt/digital-badges
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref }}
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Render environment files
+        run: |
+          # Render signing service env file
+          cat > .env.signing << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          PORT=4006
+          ENABLE_HTTPS_FOR_DEV=false
+          TENANT_SEED_DEFAULT=${{ secrets.SIGN_TENANT_SEED_DEFAULT }}
+          TENANT_SEED_TESTING=${{ secrets.SIGN_TENANT_SEED_TESTING }}
+          EOF
+
+          # Render transaction service env file
+          cat > .env.transaction << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          DEFAULT_EXCHANGE_HOST=http://localhost:4004
+          REDIS_URI=redis://redis:6379
+          STATUS_SERVICE=http://signing-service:4006
+          KEYV_WRITE_DELAY=50
+          TENANT_TOKEN_DEFAULT=${{ secrets.API_TENANT_TOKEN_DEFAULT }}
+          TENANT_TOKEN_TESTING=${{ secrets.API_TENANT_TOKEN_TESTING }}
+          ACCESS_JWT_SECRET=${{ secrets.API_ACCESS_JWT_SECRET }}
+          EOF
+
+      - name: Prepare deployment package
+        run: |
+          # Create deployment directory structure
+          mkdir -p deploy
+          cp docker-compose.yml deploy/
+          cp .env.signing deploy/
+          cp .env.transaction deploy/
+          cp -r nginx deploy/
+
+          # Add deployment metadata
+          echo "DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > deploy/.deploy
+          echo "GIT_REF=${{ github.event.inputs.git_ref }}" >> deploy/.deploy
+          echo "GIT_SHA=$(git rev-parse HEAD)" >> deploy/.deploy
+
+      - name: Deploy to server (atomic rsync)
+        run: |
+          # Sync to staging directory on server
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            deploy/ \
+            ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_DIR }}/staging/
+
+      - name: Activate deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'REMOTE_SCRIPT'
+            set -e
+
+            # Move current to rollback (for potential rollback)
+            if [ -d "${{ env.DEPLOY_DIR }}/current" ]; then
+              rm -rf "${{ env.DEPLOY_DIR }}/rollback"
+              mv "${{ env.DEPLOY_DIR }}/current" "${{ env.DEPLOY_DIR }}/rollback"
+            fi
+
+            # Move staging to current (atomic)
+            mv "${{ env.DEPLOY_DIR }}/staging" "${{ env.DEPLOY_DIR }}/current"
+
+            cd "${{ env.DEPLOY_DIR }}/current"
+
+            # Pull latest images
+            docker-compose pull
+
+            # Restart services
+            docker-compose down
+            docker-compose up -d
+
+            # Wait for services to be healthy
+            sleep 10
+
+            # Verify deployment
+            if docker-compose ps | grep -q "healthy\|Up"; then
+              echo "Deployment successful!"
+              docker-compose ps
+            else
+              echo "Deployment may have issues - check logs"
+              docker-compose logs --tail=50
+              exit 1
+            fi
+          REMOTE_SCRIPT
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh/deploy_key
