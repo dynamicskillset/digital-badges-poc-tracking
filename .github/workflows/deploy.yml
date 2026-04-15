@@ -57,7 +57,7 @@ jobs:
         run: |
           # Create deployment directory structure
           mkdir -p deploy
-          cp docker compose.yml deploy/
+          cp docker-compose.yml deploy/
           cp .env.signing deploy/
           cp .env.transaction deploy/
           cp -r nginx deploy/
