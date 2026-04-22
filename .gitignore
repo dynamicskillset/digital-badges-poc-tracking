@@ -5,6 +5,8 @@ docs/reports
 .env.signing
 .env.transaction
 .env.postgres
+.env.orca
+.env.acme
 
 # Not used except for local secret notes
 .env 

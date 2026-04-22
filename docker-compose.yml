@@ -10,11 +10,35 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - acme-certs:/etc/nginx/certs:ro
     depends_on:
       - transaction-service
+      - orca
     networks:
       - digital-badges-network
     restart: unless-stopped
+
+  # acme.sh - Let's Encrypt cert issuance + renewal via Mythic Beasts
+  # DNS-01 challenge. The container exits between commands; renewal is
+  # invoked from host cron (see scripts/issue-certs.sh and the README
+  # runbook). We do NOT run acme.sh in --daemon mode because the host
+  # cron command also needs to reload nginx after renewal, and that's
+  # cleaner orchestrated outside the acme container.
+  acme:
+    image: neilpang/acme.sh
+    container_name: digital-badges-acme
+    env_file:
+      - .env.acme
+    volumes:
+      - acme-state:/acme.sh
+      - acme-certs:/certs
+    networks:
+      - digital-badges-network
+    # No restart policy: this container is invoked via `docker compose
+    # run` for issuance and renewal, not run continuously.
+    profiles: ["tools"]
+    entrypoint: ["sh"]
+    command: ["-c", "echo 'acme.sh tools container - invoke via docker compose run --rm acme acme.sh ...'"]
 
   # Transaction Service - External API for wallet flows
   transaction-service:
@@ -35,6 +59,30 @@ services:
     container_name: digital-badges-signing
     env_file:
       - .env.signing
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+  # ORCA - Skybridge Skills staff workflows + learner claim/credential UI.
+  # Reachable on tenant subdomains "<org>.digitalbadges.scot" via nginx
+  # (routing added in a separate phase). Apex digitalbadges.scot is
+  # intentionally not routed to ORCA.
+  orca:
+    image: skybridgeskills/orca:latest
+    container_name: digital-badges-orca
+    env_file:
+      - .env.orca
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - orca-uploads:/app/dev-uploads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - digital-badges-network
     restart: unless-stopped
@@ -73,3 +121,6 @@ networks:
 
 volumes:
   postgres-data:
+  orca-uploads:
+  acme-state:    # acme.sh account, config, intermediate state
+  acme-certs:    # installed cert + key (shared read-only with nginx)
