@@ -94,11 +94,11 @@ jobs:
 
             cd "${{ env.DEPLOY_DIR }}/current"
 
-            # Pull latest images
-            docker compose pull
-
-            # Build the nginx image locally (it doesn't exist in a registry)
+            # Build locally-built images first (nginx is not in any registry)
             docker compose build nginx
+
+            # Pull everything else (--ignore-buildable skips services with a build: section)
+            docker compose pull --ignore-buildable
 
             # Restart services
             docker compose down
