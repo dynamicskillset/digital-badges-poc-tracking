@@ -28,6 +28,10 @@ Staff workflows (invitations to claim awards) and learner experiences: claim and
 
 Reverse proxy: routes hostnames to the right service, concentrates public ingress, and terminates TLS (TLS 1.2+) for browser and wallet traffic at this tier.
 
+### Postgres
+
+ORCA's persistence layer: tenant configuration, achievement definitions, and credential / claim metadata. Runs as a container on the same Docker Compose network as the application services so ORCA can reach it by service DNS name (`postgres`). Reachable only on the Docker network — not exposed via nginx and not published to the host. Schema bootstrap (`orca` database, `orca_public` schema) runs once on first start from a checked-in init script; data persists across restarts via a named Docker volume.
+
 These services are intended to run as containers on a Docker Compose network, so they share a private network namespace while nginx remains the controlled entry point from the internet. In a production deployment, these services could be run as load-balanced horizontally scalable tasks behind an application load balancer and internet gateway.
 
 ```{=latex}
@@ -55,9 +59,11 @@ flowchart TB
     ORCA["ORCA (apex host)"]
     TxService["Transaction Service (api subdomain)"]
     Future["future: VerifierPlus, OIDF registry on reserved subdomains"]
+    Postgres["Postgres (internal only)"]
   end
 
   TxService --> Signing
+  ORCA --> Postgres
   ORCA -.->|"coordinates / uses for exchange flows"| TxService
 
   Signing["Signing Service (internal only)"]

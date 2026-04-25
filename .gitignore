@@ -1,9 +1,13 @@
 docs/plans 
+docs/plans-old
 docs/reports
 .DS_Store
 # Environment files (examples are version controlled, rendered files are not)
 .env.signing
 .env.transaction
+.env.postgres
+.env.orca
+.env.acme
 
 # Not used except for local secret notes
 .env 
