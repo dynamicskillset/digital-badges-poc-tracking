@@ -97,6 +97,9 @@ jobs:
             # Pull latest images
             docker compose pull
 
+            # Build the nginx image locally (it doesn't exist in a registry)
+            docker compose build nginx
+
             # Restart services
             docker compose down
             docker compose up -d
