@@ -37,18 +37,28 @@ fi
 # -T disables pseudo-TTY allocation on `docker compose run`; without it,
 # acme.sh's stdout/stderr gets eaten by Compose's attach layer when the
 # outer shell is piping or logging this script.
+#
+# --server letsencrypt is passed explicitly on every CA-touching call.
+# acme.sh v3.x defaults to ZeroSSL, and the default is only persisted
+# into account.conf once `--set-default-ca` runs. Passing the flag
+# inline means we don't depend on volume state and we can't silently
+# register against the wrong CA if the acme-state volume is wiped.
 
 # Register the LE account on first run (idempotent).
 docker compose run --rm -T acme \
     --register-account \
+    --server letsencrypt \
     -m "${LE_EMAIL}"
 
 # Issue the wildcard via Mythic Beasts DNS-01. --keylength ec-256 makes
 # this an ECC cert so it lands in the same path that --install-cert --ecc
-# reads from below.
+# reads from below. The DNS hook file is `dnsapi/dns_mythic_beasts.sh`
+# (with underscores); it reads MB_AK / MB_AS from env and does OAuth2
+# against Mythic Beasts' Primary API v2.
 docker compose run --rm -T acme \
     --issue \
-    --dns dns_mythicbeasts \
+    --server letsencrypt \
+    --dns dns_mythic_beasts \
     --keylength ec-256 \
     -d digitalbadges.scot \
     -d "*.digitalbadges.scot"
