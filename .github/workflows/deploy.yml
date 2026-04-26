@@ -53,6 +53,37 @@ jobs:
           ACCESS_JWT_SECRET=${{ secrets.API_ACCESS_JWT_SECRET }}
           EOF
 
+          # Render postgres env file
+          cat > .env.postgres << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          POSTGRES_USER=orcaadmin
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=orca
+          EOF
+
+          # Render orca env file
+          cat > .env.orca << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          DATABASE_SERVERLESS="false"
+          DATABASE_URL="postgresql://orcaadmin:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/orca?schema=orca_public"
+          DATABASE_URL_DIRECT="postgresql://orcaadmin:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/orca?schema=orca_public"
+          PUBLIC_HTTP_PROTOCOL="https"
+          USE_SECURE_COOKIES="true"
+          DEFAULT_ORG_ENABLED="false"
+          DEFAULT_ORG_DOMAIN=""
+          PUBLIC_MEDIA_DOMAIN="/media"
+          ORG_CONFIG_ENCRYPTION_KEY=${{ secrets.ORCA_ORG_CONFIG_ENCRYPTION_KEY }}
+          EOF
+
+          # Render acme env file
+          cat > .env.acme << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          MYTHICBEASTS_USERNAME="${{ secrets.ACME_MYTHICBEASTS_USERNAME }}"
+          MYTHICBEASTS_PASSWORD="${{ secrets.ACME_MYTHICBEASTS_PASSWORD }}"
+          LE_EMAIL="${{ secrets.ACME_LE_EMAIL }}"
+          ACME_DOMAIN_LIST="-d digitalbadges.scot -d *.digitalbadges.scot"
+          EOF
+
       - name: Prepare deployment package
         run: |
           # Create deployment directory structure
@@ -60,6 +91,9 @@ jobs:
           cp docker-compose.yml deploy/
           cp .env.signing deploy/
           cp .env.transaction deploy/
+          cp .env.orca deploy/
+          cp .env.postgres deploy/
+          cp .env.acme deploy/
           cp -r nginx deploy/
 
           # Add deployment metadata
