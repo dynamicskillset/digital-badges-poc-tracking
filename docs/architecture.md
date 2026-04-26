@@ -107,7 +107,7 @@ This app provided a learner-facing claim UI tied tightly to the DCC Admin Dashbo
 
 These host names are targets for routing; DNS, certificates, and hardening follow implementation.
 
-**ORCA** Org-specific subdomains `<org>.digitalbadges.scot` — Staff admin, learner claim and credential management, credential registry. Tenant-specific subdomain for each organization and staff.
+**ORCA** Apex `digitalbadges.scot` and org-specific subdomains `<org>.digitalbadges.scot` — Staff admin, learner claim and credential management, credential registry. Apex and tenant subdomains share the same nginx vhost; apex requests resolve to whichever `Organization` row is configured for the apex host, and unknown hosts fall through to the nginx `default_server` 404.
 
 **DCC Transaction Service** `api.digitalbadges.scot` — Wallet-facing exchange and related APIs.
 

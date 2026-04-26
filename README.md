@@ -10,8 +10,12 @@ images rather than embedding primary application source code.
 
 The workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) renders env files and rsyncs them to the PoC server. Configure **repository variables** (Settings → Secrets and variables → Actions → Variables):
 
-- `SSH_HOST` — deploy target hostname or IP
-- `SSH_USER` — SSH user for rsync and remote `docker compose`
+| Variable | Purpose |
+| -------- | ------- |
+| `SSH_HOST` | Deploy target hostname or IP |
+| `SSH_USER` | SSH user for rsync and remote `docker compose` |
+| `ACME_MYTHICBEASTS_USERNAME` | Mythic Beasts DNS API key id (non-sensitive identifier; pairs with the API secret below) |
+| `ACME_LE_EMAIL` | Let's Encrypt account email (non-sensitive; used for expiry notifications) |
 
 Configure **repository secrets** (Settings → Secrets and variables → Actions → Repository secrets). Existing signing/transaction secrets are documented in the workflow file; additionally set:
 
@@ -19,9 +23,7 @@ Configure **repository secrets** (Settings → Secrets and variables → Actions
 | ------ | ------- |
 | `POSTGRES_PASSWORD` | Postgres superuser password for `orcaadmin`. **Use a URL-safe value** (e.g. `openssl rand -hex 24`) — it is embedded in ORCA’s `DATABASE_URL`. |
 | `ORCA_ORG_CONFIG_ENCRYPTION_KEY` | 32 random bytes, base64. `openssl rand -base64 32` — encrypts per-org API keys at rest in ORCA. |
-| `ACME_MYTHICBEASTS_USERNAME` | Mythic Beasts DNS API key id |
 | `ACME_MYTHICBEASTS_PASSWORD` | Mythic Beasts DNS API secret |
-| `ACME_LE_EMAIL` | Let’s Encrypt account email |
 
 After a successful run, verify on the host:
 
@@ -34,10 +36,10 @@ After a successful run, verify on the host:
 | Host | Routes to |
 | ---- | --------- |
 | `api.digitalbadges.scot` | `transaction-service` (via nginx → `transaction-service:4004`) |
+| `digitalbadges.scot` (apex) | `orca` (via nginx → `orca:3000`) |
 | `*.digitalbadges.scot` (any non-apex subdomain) | `orca` (via nginx → `orca:3000`) |
-| `digitalbadges.scot` (apex) | `404` from nginx default server (reserved for a future static landing) |
 
-`api.digitalbadges.scot` is matched by an exact `server_name` in nginx, so it is **not** covered by the wildcard that sends other subdomains to ORCA. The apex host is not in the ORCA `server_name` list, so it hits the `default_server` catch-all and returns `404`.
+`api.digitalbadges.scot` is matched by an exact `server_name` in nginx, so it is **not** covered by the wildcard that sends other subdomains to ORCA. The apex `digitalbadges.scot` is listed explicitly in the same `server_name` block as the wildcard (nginx wildcards do not match the bare apex), so apex traffic reaches ORCA on the same TLS vhost as tenant subdomains. Unknown hosts still hit the `default_server` catch-all and return `404`.
 
 ### Local testing
 

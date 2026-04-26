@@ -2,6 +2,8 @@ docs/plans
 docs/plans-old
 docs/reports
 .DS_Store
+mermaid-filter.err
+
 # Environment files (examples are version controlled, rendered files are not)
 .env.signing
 .env.transaction
