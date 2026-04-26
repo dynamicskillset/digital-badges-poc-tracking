@@ -61,7 +61,7 @@ TLS is terminated at **nginx** using **Let's Encrypt** certificates. A single **
 
 - DNS **A** (or AAAA) records for the hostnames you use, pointing at the PoC server.
 - **Ports 80 and 443** reachable from the public internet (80 is used for HTTP→HTTPS redirect and optional `/.well-known/acme-challenge/`; 443 serves the apps).
-- A Mythic Beasts **API key** in the control panel, scoped to write **only** `_acme-challenge` **TXT** records on the `digitalbadges.scot` zone. The panel gives an API key id (`MYTHICBEASTS_USERNAME`) and secret (`MYTHICBEASTS_PASSWORD`).
+- A Mythic Beasts **account-level API key** (control panel → **Account → API keys**), scoped to write **only** `_acme-challenge` **TXT** records on the `digitalbadges.scot` zone. The control panel emits a key id and secret — these map to the env vars `MB_AK` and `MB_AS` that acme.sh's `dns_mythic_beasts` hook reads. *Do not* use the older per-domain "DNS API key"; the current acme.sh hook uses Mythic Beasts' Primary API v2 with OAuth2, not the legacy DNS API.
 - A real **Let's Encrypt** contact email in `LE_EMAIL` (expiry and account notices).
 
 **Initial issuance**
@@ -71,7 +71,7 @@ TLS is terminated at **nginx** using **Let's Encrypt** certificates. A single **
 2. Ensure **`.env.orca`** sets `PUBLIC_HTTP_PROTOCOL` / `USE_SECURE_COOKIES` for HTTPS (match `.env.orca.example`).
 3. From the PoC repo root, run:  
    `./scripts/issue-certs.sh`  
-   (This runs `docker compose run --rm acme acme.sh …` to register the account, issue the wildcard, write PEMs into the shared `acme-certs` volume, and reload nginx.)
+   (This invokes the `acme` compose service — which uses the upstream `neilpang/acme.sh` image's default `/entry.sh` entrypoint, so flags are passed to acme.sh directly — to register a Let's Encrypt account, issue the wildcard, write PEMs into the shared `acme-certs` volume, and reload nginx.)
 
 **Verification**
 
@@ -94,7 +94,7 @@ TLS is terminated at **nginx** using **Let's Encrypt** certificates. A single **
   # cert is within its renewal window and skips otherwise, so weekly is
   # fine and won't hit Let's Encrypt rate limits.
   0 4 * * 1 root cd /opt/digital-badges-poc && \
-      docker compose run --rm acme acme.sh --cron --home /acme.sh && \
+      docker compose run --rm -T acme --cron --home /acme.sh && \
       docker compose exec -T nginx nginx -t && \
       docker compose exec -T nginx nginx -s reload >> /var/log/digital-badges-acme.log 2>&1
   ```
@@ -102,7 +102,7 @@ TLS is terminated at **nginx** using **Let's Encrypt** certificates. A single **
   Adjust the `cd` path and user to match your deployment; `root` is common when only root may run `docker`.
 
 - **Manual:**  
-  `docker compose run --rm acme acme.sh --cron --home /acme.sh`  
+  `docker compose run --rm -T acme --cron --home /acme.sh`  
   then run nginx -t and nginx -s reload as above if a cert was renewed.
 
 **Where certificates live**
@@ -150,4 +150,4 @@ docker compose exec postgres psql -U orcaadmin orca
 - **Logs:** follow a service with `docker compose logs -f <service>` where `<service>` is one of `nginx`, `orca`, `postgres`, `transaction-service`, `signing-service`, or `redis`. (The `acme` service is usually invoked with `docker compose run` rather than left running.)
 - **ORCA uploads:** filesystem-backed media lives in the **`orca-uploads`** named volume (mounted at `/app/dev-uploads` in the `orca` container). It survives `docker compose restart` and is removed only if you delete the volume (e.g. `docker compose down -v` together with other volumes).
 - **Installed certificates:** list what acme.sh has stored with  
-  `docker compose run --rm acme acme.sh --list --home /acme.sh`
+  `docker compose run --rm -T acme --list --home /acme.sh`

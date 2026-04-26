@@ -82,11 +82,16 @@ jobs:
           ORG_CONFIG_ENCRYPTION_KEY=${{ secrets.ORCA_ORG_CONFIG_ENCRYPTION_KEY }}
           EOF
 
-          # Render acme env file
+          # Render acme env file. MB_AK / MB_AS are the env var names the
+          # current acme.sh dnsapi/dns_mythic_beasts.sh hook reads (OAuth2
+          # key id + secret for Mythic Beasts' Primary API v2). The
+          # ACME_MYTHICBEASTS_* GH names are retained as the source side so
+          # operators don't have to rotate the GH var / secret when the
+          # upstream hook's env var names change.
           cat > .env.acme << 'EOF'
           # Auto-generated from template - DO NOT EDIT MANUALLY
-          MYTHICBEASTS_USERNAME="${{ vars.ACME_MYTHICBEASTS_USERNAME }}"
-          MYTHICBEASTS_PASSWORD="${{ secrets.ACME_MYTHICBEASTS_PASSWORD }}"
+          MB_AK="${{ vars.ACME_MYTHICBEASTS_USERNAME }}"
+          MB_AS="${{ secrets.ACME_MYTHICBEASTS_PASSWORD }}"
           LE_EMAIL="${{ vars.ACME_LE_EMAIL }}"
           ACME_DOMAIN_LIST="-d digitalbadges.scot -d *.digitalbadges.scot"
           EOF
