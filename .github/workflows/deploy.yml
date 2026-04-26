@@ -16,6 +16,13 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    outputs:
+      deployed_at: ${{ steps.activate.outputs.deployed_at }}
+      git_ref: ${{ steps.activate.outputs.git_ref }}
+      git_sha: ${{ steps.activate.outputs.git_sha }}
+      containers_healthy: ${{ steps.activate.outputs.containers_healthy }}
+      containers_total: ${{ steps.activate.outputs.containers_total }}
+      rollback_available: ${{ steps.activate.outputs.rollback_available }}
 
     steps:
       - name: Checkout code
@@ -113,44 +120,113 @@ jobs:
             ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_DIR }}/staging/
 
       - name: Activate deployment
+        id: activate
         run: |
+          # Run remote deployment with enhanced logging
           ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'REMOTE_SCRIPT'
             set -e
 
+            echo "::group::📁 Atomic deployment swap"
             # Move current to rollback (for potential rollback)
             if [ -d "${{ env.DEPLOY_DIR }}/current" ]; then
-              rm -rf "${{ env.DEPLOY_DIR }}/rollback"
+              if [ -d "${{ env.DEPLOY_DIR }}/rollback" ]; then
+                echo "::warning::Overwriting existing rollback directory"
+                rm -rf "${{ env.DEPLOY_DIR }}/rollback"
+              fi
               mv "${{ env.DEPLOY_DIR }}/current" "${{ env.DEPLOY_DIR }}/rollback"
+              echo "::notice::Rollback snapshot created at ${{ env.DEPLOY_DIR }}/rollback"
+            else
+              echo "::notice::No previous deployment to rollback to"
             fi
 
             # Move staging to current (atomic)
             mv "${{ env.DEPLOY_DIR }}/staging" "${{ env.DEPLOY_DIR }}/current"
+            echo "::notice::Activation complete - staging moved to current"
+            echo "::endgroup::"
 
             cd "${{ env.DEPLOY_DIR }}/current"
 
-            # Build locally-built images first (nginx is not in any registry)
+            echo "::group::🔨 Building local images"
             docker compose build nginx
+            echo "::endgroup::"
 
-            # Pull everything else (--ignore-buildable skips services with a build: section)
+            echo "::group::📥 Pulling registry images"
             docker compose pull --ignore-buildable
+            echo "::endgroup::"
 
-            # Restart services
+            echo "::group::🚀 Restarting services"
             docker compose down
             docker compose up -d
+            echo "::endgroup::"
 
-            # Wait for services to be healthy
+            echo "::group::⏳ Waiting for services (10s)"
             sleep 10
+            echo "::endgroup::"
+
+            echo "::group::✅ Verifying deployment"
+            # Collect container status
+            CONTAINER_STATUS=$(docker compose ps --format json 2>/dev/null || docker compose ps)
+            HEALTHY_COUNT=$(docker compose ps | grep -c "healthy" || echo "0")
+            TOTAL_COUNT=$(docker compose ps -q | wc -l)
+
+            # Write summary file for retrieval
+            cat > .deploy-summary << SUMMARY_EOF
+          ## Deployment Summary
+
+          | Property | Value |
+          |----------|-------|
+          | Deployed At | $(grep DEPLOYED_AT .deploy | cut -d= -f2) |
+          | Git Ref | $(grep GIT_REF .deploy | cut -d= -f2) |
+          | Git SHA | $(grep GIT_SHA .deploy | cut -d= -f2) |
+          | Containers Healthy | ${HEALTHY_COUNT}/${TOTAL_COUNT} |
+          | Rollback Available | $(test -d "${{ env.DEPLOY_DIR }}/rollback" && echo "Yes" || echo "No") |
+
+          ### Container Status
+
+          \`\`\`
+          $(docker compose ps)
+          \`\`\`
+          SUMMARY_EOF
+
+            # Output machine-readable values
+            echo "DEPLOYED_AT=$(grep DEPLOYED_AT .deploy | cut -d= -f2)" >> .deploy-outputs
+            echo "GIT_REF=$(grep GIT_REF .deploy | cut -d= -f2)" >> .deploy-outputs
+            echo "GIT_SHA=$(grep GIT_SHA .deploy | cut -d= -f2)" >> .deploy-outputs
+            echo "CONTAINERS_HEALTHY=${HEALTHY_COUNT}" >> .deploy-outputs
+            echo "CONTAINERS_TOTAL=${TOTAL_COUNT}" >> .deploy-outputs
+            if [ -d "${{ env.DEPLOY_DIR }}/rollback" ]; then
+              echo "ROLLBACK_AVAILABLE=true" >> .deploy-outputs
+            else
+              echo "ROLLBACK_AVAILABLE=false" >> .deploy-outputs
+            fi
 
             # Verify deployment
-            if docker compose ps | grep -q "healthy\|Up"; then
-              echo "Deployment successful!"
-              docker compose ps
+            if [ "$HEALTHY_COUNT" -eq "$TOTAL_COUNT" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
+              echo "::notice::All ${TOTAL_COUNT} containers healthy - deployment successful!"
+              echo "::endgroup::"
             else
-              echo "Deployment may have issues - check logs"
+              echo "::error::Health check failed - only ${HEALTHY_COUNT}/${TOTAL_COUNT} containers healthy"
               docker compose logs --tail=50
+              echo "::endgroup::"
               exit 1
             fi
           REMOTE_SCRIPT
+
+          # Fetch outputs from remote server
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat ${{ env.DEPLOY_DIR }}/current/.deploy-outputs" > /tmp/deploy_outputs 2>/dev/null || true
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat ${{ env.DEPLOY_DIR }}/current/.deploy-summary" > /tmp/deploy_summary 2>/dev/null || true
+
+          # Set step outputs
+          if [ -f /tmp/deploy_outputs ]; then
+            while IFS='=' read -r key value; do
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+            done < /tmp/deploy_outputs
+          fi
+
+          # Write step summary
+          if [ -f /tmp/deploy_summary ]; then
+            cat /tmp/deploy_summary >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Cleanup
         if: always()
