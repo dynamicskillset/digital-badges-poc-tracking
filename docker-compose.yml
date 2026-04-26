@@ -42,10 +42,11 @@ services:
     networks:
       - acme-egress
     # No restart policy: this container is invoked via `docker compose
-    # run` for issuance and renewal, not run continuously.
+    # run` for issuance and renewal, not run continuously. We keep the
+    # image's default ENTRYPOINT ["/entry.sh"], which execs
+    # `acme.sh "$@"`, so callers pass acme.sh flags directly, e.g.
+    # `docker compose run --rm -T acme --issue -d ...`.
     profiles: ["tools"]
-    entrypoint: ["sh"]
-    command: ["-c", "echo 'acme.sh tools container - invoke via docker compose run --rm acme acme.sh ...'"]
 
   # Transaction Service - External API for wallet flows
   transaction-service:
