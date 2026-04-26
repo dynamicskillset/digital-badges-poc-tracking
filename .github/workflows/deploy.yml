@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: 'Git ref to deploy (branch, tag, or SHA)'
+        description: "Git ref to deploy (branch, tag, or SHA)"
         required: true
-        default: 'main'
+        default: "main"
 
 env:
   DEPLOY_HOST: ${{ vars.SSH_HOST }}
@@ -85,7 +85,7 @@ jobs:
           # Render acme env file
           cat > .env.acme << 'EOF'
           # Auto-generated from template - DO NOT EDIT MANUALLY
-          MYTHICBEASTS_USERNAME="${{ secrets.ACME_MYTHICBEASTS_USERNAME }}"
+          MYTHICBEASTS_USERNAME="${{ vars.ACME_MYTHICBEASTS_USERNAME }}"
           MYTHICBEASTS_PASSWORD="${{ secrets.ACME_MYTHICBEASTS_PASSWORD }}"
           LE_EMAIL="${{ secrets.ACME_LE_EMAIL }}"
           ACME_DOMAIN_LIST="-d digitalbadges.scot -d *.digitalbadges.scot"
@@ -107,8 +107,8 @@ jobs:
           echo "DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > deploy/.deploy
           echo "GIT_REF=${{ github.event.inputs.git_ref }}" >> deploy/.deploy
           echo "GIT_SHA=$(git rev-parse HEAD)" >> deploy/.deploy
-      
-      - name: Install rsync                                                   
+
+      - name: Install rsync
         run: sudo apt-get install -y rsync
 
       - name: Deploy to server (atomic rsync)
