@@ -29,15 +29,24 @@ if [ -z "${LE_EMAIL}" ]; then
     exit 1
 fi
 
+# We invoke acme.sh through the image's default ENTRYPOINT (/entry.sh),
+# which execs `acme.sh "$@"`, so callers pass acme.sh flags directly - we
+# do NOT prefix with `acme.sh` on the CLI (that would make /entry.sh run
+# `acme.sh acme.sh ...`, silently broken).
+#
+# -T disables pseudo-TTY allocation on `docker compose run`; without it,
+# acme.sh's stdout/stderr gets eaten by Compose's attach layer when the
+# outer shell is piping or logging this script.
+
 # Register the LE account on first run (idempotent).
-docker compose run --rm acme acme.sh \
+docker compose run --rm -T acme \
     --register-account \
     -m "${LE_EMAIL}"
 
 # Issue the wildcard via Mythic Beasts DNS-01. --keylength ec-256 makes
 # this an ECC cert so it lands in the same path that --install-cert --ecc
 # reads from below.
-docker compose run --rm acme acme.sh \
+docker compose run --rm -T acme \
     --issue \
     --dns dns_mythicbeasts \
     --keylength ec-256 \
@@ -46,7 +55,7 @@ docker compose run --rm acme acme.sh \
 
 # Install the cert into a stable path inside the acme-certs volume.
 # Nginx reads from /etc/nginx/certs/ (the same volume mounted ro).
-docker compose run --rm acme acme.sh \
+docker compose run --rm -T acme \
     --install-cert -d digitalbadges.scot --ecc \
     --fullchain-file /certs/digitalbadges.scot.fullchain.pem \
     --key-file       /certs/digitalbadges.scot.key.pem
