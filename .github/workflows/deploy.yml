@@ -46,6 +46,7 @@ jobs:
           ENABLE_HTTPS_FOR_DEV=false
           TENANT_SEED_DEFAULT=${{ secrets.SIGN_TENANT_SEED_DEFAULT }}
           TENANT_SEED_TESTING=${{ secrets.SIGN_TENANT_SEED_TESTING }}
+          TENANT_SEED_AWARDSNETWORK=${{ secrets.SIGN_TENANT_SEED_AWARDSNETWORK }}
           EOF
 
           # Render transaction service env file
@@ -57,6 +58,7 @@ jobs:
           KEYV_WRITE_DELAY=50
           TENANT_TOKEN_DEFAULT=${{ secrets.API_TENANT_TOKEN_DEFAULT }}
           TENANT_TOKEN_TESTING=${{ secrets.API_TENANT_TOKEN_TESTING }}
+          TENANT_TOKEN_AWARDSNETWORK=${{ secrets.API_TENANT_TOKEN_AWARDSNETWORK }}
           ACCESS_JWT_SECRET=${{ secrets.API_ACCESS_JWT_SECRET }}
           EOF
 

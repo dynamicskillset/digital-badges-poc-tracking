@@ -17,7 +17,7 @@ The workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) rend
 | `ACME_MYTHICBEASTS_USERNAME` | Mythic Beasts DNS API key id (non-sensitive identifier; pairs with the API secret below) |
 | `ACME_LE_EMAIL` | Let's Encrypt account email (non-sensitive; used for expiry notifications) |
 
-Configure **repository secrets** (Settings → Secrets and variables → Actions → Repository secrets). Existing signing/transaction secrets are documented in the workflow file; additionally set:
+Configure **repository secrets** (Settings → Secrets and variables → Actions → Repository secrets). Infrastructure-level secrets are listed first; tenant-specific credentials follow in the next subsection.
 
 | Secret | Purpose |
 | ------ | ------- |
@@ -26,6 +26,45 @@ Configure **repository secrets** (Settings → Secrets and variables → Actions
 | `ACME_MYTHICBEASTS_PASSWORD` | Mythic Beasts DNS API secret |
 | `MAIL_SMTP_USERNAME` | Inbound SMTP AUTH username on the in-compose `mail` service (Postfix). Used by both `.env.mail` (`SMTP_USERNAME`) and `.env.orca` (`SMTP_USER`). Any opaque string. |
 | `MAIL_SMTP_PASSWORD` | Inbound SMTP AUTH password for the above username. Generate with e.g. `openssl rand -hex 24`. |
+
+### Tenant secrets
+
+Each tenant has two credentials: a **signing seed** (the Ed25519 seed the signing service uses to sign credentials for that tenant) and a **transaction-service API token** (the Bearer token ORCA — or any other client — uses when calling the transaction service's per-tenant routes). Both are rendered into `.env.signing` / `.env.transaction` by `.github/workflows/deploy.yml` at deploy time.
+
+Secret naming follows `SIGN_TENANT_SEED_<TENANT>` and `API_TENANT_TOKEN_<TENANT>` (tenant suffix uppercase). The services lowercase the suffix at load time, so the actual tenant names on the wire are `default`, `testing`, `awardsnetwork`.
+
+| Tenant | Signing seed secret | API token secret |
+| ------ | ------------------- | ---------------- |
+| `default` | `SIGN_TENANT_SEED_DEFAULT` | `API_TENANT_TOKEN_DEFAULT` |
+| `testing` | `SIGN_TENANT_SEED_TESTING` | `API_TENANT_TOKEN_TESTING` |
+| `awardsnetwork` | `SIGN_TENANT_SEED_AWARDSNETWORK` | `API_TENANT_TOKEN_AWARDSNETWORK` |
+
+Plus one shared secret used by the transaction service across all tenants:
+
+| Secret | Purpose |
+| ------ | ------- |
+| `API_ACCESS_JWT_SECRET` | Symmetric secret used by the transaction service to sign / verify short-lived access JWTs it issues on behalf of tenants. One value, shared across tenants. Any opaque high-entropy string (e.g. `openssl rand -hex 32`). |
+
+**Signing seed format:** a multibase-encoded Ed25519 seed (the same format the signing service's `GET /did-key-generator` endpoint returns). Generate one by calling that endpoint from any container on the compose network (e.g. `docker compose exec transaction-service wget -qO- http://signing-service:4006/did-key-generator | jq -r .seed`), or reuse one generated previously. Each tenant must have a **stable** seed — rotating it rotates the tenant's DID and invalidates previously issued credentials.
+
+**API token format:** any opaque high-entropy string the operator picks. The same string is pasted into the matching ORCA `Organization` row (via the ORCA admin UI) as the transaction-service `apiKey`; ORCA encrypts it at rest using `ORG_CONFIG_ENCRYPTION_KEY`. Generate with e.g. `openssl rand -hex 24`.
+
+#### Adding a new tenant
+
+To add a tenant named `<tenant>` (lowercase) / `<TENANT>` (uppercase suffix):
+
+1. Create two GitHub Actions repository secrets: `SIGN_TENANT_SEED_<TENANT>` and `API_TENANT_TOKEN_<TENANT>`.
+2. Add one line to `.env.signing.example`:
+   `TENANT_SEED_<TENANT>=${SIGN_TENANT_SEED_<TENANT>}`.
+3. Add one line to `.env.transaction.example`:
+   `TENANT_TOKEN_<TENANT>=${API_TENANT_TOKEN_<TENANT>}`.
+4. Add the matching lines to the two heredocs in
+   `.github/workflows/deploy.yml` (`TENANT_SEED_<TENANT>=…` and
+   `TENANT_TOKEN_<TENANT>=…`).
+5. Add a row to the **Tenant secrets** table above.
+6. In ORCA's admin UI, create (or edit) the tenant's `Organization` row and set the transaction-service config: `url` = `http://transaction-service:4004`, `tenantName` = `<tenant>`, `apiKey` = the same string stored in `API_TENANT_TOKEN_<TENANT>`.
+7. Optionally add placeholder lines to the gitignored local-dev
+   `.env.signing` (`TENANT_SEED_<TENANT>=generate`) and `.env.transaction` (`TENANT_TOKEN_<TENANT>=test-token-<tenant>`) if you want the tenant available in local development.
 
 After a successful run, verify on the host:
 
