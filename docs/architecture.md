@@ -32,6 +32,14 @@ Reverse proxy: routes hostnames to the right service, concentrates public ingres
 
 ORCA's persistence layer: tenant configuration, achievement definitions, and credential / claim metadata. Runs as a container on the same Docker Compose network as the application services so ORCA can reach it by service DNS name (`postgres`). Reachable only on the Docker network — not exposed via nginx and not published to the host. Schema bootstrap (`orca` database, `orca_public` schema) runs once on first start from a checked-in init script; data persists across restarts via a named Docker volume.
 
+### Mail (self-hosted Postfix, send-only)
+
+ORCA sends notifications and sign-in codes; a small Postfix container (`boky/postfix`) accepts authenticated SMTP from ORCA on the Compose bridge and delivers outbound either direct-to-MX or via an optional smarthost relay configured through environment variables. It is send-only: it does not accept inbound mail for any mailbox.
+
+The envelope sender is rewritten to `notifications@digitalbadges.scot` on outbound, while the RFC 5322 `From:` header is left as the tenant organisation's own address so replies reach the organisation.
+
+Deliverability on a fresh PoC VM without SPF, DKIM, DMARC, or matching rDNS will be inconsistent; the smarthost relay is the documented escape hatch when direct-to-MX is blocked or deliverability is insufficient.
+
 These services are intended to run as containers on a Docker Compose network, so they share a private network namespace while nginx remains the controlled entry point from the internet. In a production deployment, these services could be run as load-balanced horizontally scalable tasks behind an application load balancer and internet gateway.
 
 ```{=latex}
@@ -60,13 +68,17 @@ flowchart TB
     TxService["Transaction Service (api subdomain)"]
     Future["future: VerifierPlus, OIDF registry on reserved subdomains"]
     Postgres["Postgres (internal only)"]
+    Mail["Mail (internal; send-only SMTP)"]
   end
 
   TxService --> Signing
   ORCA --> Postgres
+  ORCA -->|"SMTP :587 with AUTH"| Mail
   ORCA -.->|"coordinates / uses for exchange flows"| TxService
 
   Signing["Signing Service (internal only)"]
+  Internet["Recipient MX servers"]
+  Mail -.->|"SMTP :25 (direct-to-MX) or smarthost :587"| Internet
 ```
 
 ## Alternatives and ecosystem review
@@ -115,7 +127,14 @@ These host names are targets for routing; DNS, certificates, and hardening follo
 
 **OIDF issuer registry** `registry.digitalbadges.scot` — Future self-hosted registry; production trust when wallet integration is ready.
 
-The Signing Service is reachable only on the Docker network (e.g. service hostname internal to Compose), not via a public vhost.
+The Signing Service and the Mail service (self-hosted Postfix, send-only) are reachable only on the Docker network; neither has a public vhost.
+
+### Deliverability caveats
+
+- Many cloud and VPS providers block outbound port 25 by default; if that is the case on the PoC host, the smarthost relay (`RELAYHOST` in `.env.mail`) is the documented escape hatch.
+- The PoC domain does not yet publish SPF, DKIM, or DMARC records; mail from the PoC VM IP is therefore likely to land in spam or be rejected by strict receivers until those records are added (out of scope for this repo).
+- Bounces and DSNs return to `notifications@digitalbadges.scot` (envelope sender rewritten by the mail service); the RFC 5322 `From:` header preserved from the application (the organisation's address) is what users see and reply to.
+- Mail is not part of the public ingress plane; no hostname or public port is allocated.
 
 ## Trust and holder components (adjacent to Compose)
 

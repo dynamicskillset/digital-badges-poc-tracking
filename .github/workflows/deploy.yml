@@ -80,6 +80,14 @@ jobs:
           DEFAULT_ORG_DOMAIN=""
           PUBLIC_MEDIA_DOMAIN="/media"
           ORG_CONFIG_ENCRYPTION_KEY=${{ secrets.ORCA_ORG_CONFIG_ENCRYPTION_KEY }}
+          MAILGUN_API_KEY="none"
+          MAILGUN_DOMAIN=""
+          MAILGUN_HOST=""
+          SMTP_HOST="mail"
+          SMTP_PORT="587"
+          SMTP_SECURE="false"
+          SMTP_USER=${{ secrets.MAIL_SMTP_USERNAME }}
+          SMTP_PASSWORD=${{ secrets.MAIL_SMTP_PASSWORD }}
           EOF
 
           # Render acme env file. MB_AK / MB_AS are the env var names the
@@ -96,6 +104,24 @@ jobs:
           ACME_DOMAIN_LIST="-d digitalbadges.scot -d *.digitalbadges.scot"
           EOF
 
+          # Render mail env file. boky/postfix reads SMTP_USERNAME /
+          # SMTP_PASSWORD for inbound AUTH (used by ORCA on the compose
+          # bridge). POSTFIX_sender_canonical_* and
+          # ALLOW_EMPTY_SENDER_DOMAINS are configuration-only values
+          # that don't depend on secrets; they are kept here so the
+          # rendered file is self-contained (not split across template
+          # and secret). RELAYHOST (smarthost) is intentionally not
+          # rendered in CI: the PoC default is direct-to-MX, and any
+          # smarthost override is a host-side operator decision.
+          cat > .env.mail << 'EOF'
+          # Auto-generated from template - DO NOT EDIT MANUALLY
+          SMTP_USERNAME=${{ secrets.MAIL_SMTP_USERNAME }}
+          SMTP_PASSWORD=${{ secrets.MAIL_SMTP_PASSWORD }}
+          ALLOW_EMPTY_SENDER_DOMAINS=1
+          POSTFIX_sender_canonical_classes=envelope_sender
+          POSTFIX_sender_canonical_maps=regexp:/etc/postfix/sender_canonical
+          EOF
+
       - name: Prepare deployment package
         run: |
           # Create deployment directory structure
@@ -105,6 +131,7 @@ jobs:
           cp .env.transaction deploy/
           cp .env.orca deploy/
           cp .env.postgres deploy/
+          cp .env.mail deploy/
           cp .env.acme deploy/
           cp -r nginx deploy/
           cp -r scripts deploy/

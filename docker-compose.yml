@@ -83,6 +83,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mail:
+        condition: service_started
     volumes:
       - orca-uploads:/app/dev-uploads
     healthcheck:
@@ -119,6 +121,28 @@ services:
     image: redis:7-alpine
     container_name: digital-badges-redis
     command: redis-server --appendonly no
+    networks:
+      - digital-badges-network
+    restart: unless-stopped
+
+  # Mail - Send-only SMTP relay (Postfix). Internal only, not exposed
+  # externally. ORCA connects over the compose bridge on SMTP :587
+  # with AUTH and hands off messages. Outbound behaviour:
+  #   - Default: direct-to-MX on port 25 egress from the PoC host.
+  #   - Optional smarthost: set RELAYHOST (+ RELAYHOST_USERNAME /
+  #     RELAYHOST_PASSWORD) in .env.mail to relay upstream. See the
+  #     plan in docs/plans/2026-04-26-orca-self-hosted-smtp/ for
+  #     design and deliverability notes.
+  # The envelope sender (MAIL FROM) is rewritten to
+  # notifications@digitalbadges.scot via the mounted regexp map below;
+  # the RFC 5322 From: header remains whatever the application passes.
+  mail:
+    image: boky/postfix:v5.1.0@sha256:aafc772384232497bed875e1eb66b4d3e54ba1ebc86e2e185a6dc1dbc48182ef
+    container_name: digital-badges-mail
+    env_file:
+      - .env.mail
+    volumes:
+      - ./postfix/sender_canonical:/etc/postfix/sender_canonical:ro
     networks:
       - digital-badges-network
     restart: unless-stopped

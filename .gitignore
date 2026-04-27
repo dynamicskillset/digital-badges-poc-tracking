@@ -9,6 +9,7 @@ mermaid-filter.err
 .env.transaction
 .env.postgres
 .env.orca
+.env.mail
 .env.acme
 
 # Not used except for local secret notes

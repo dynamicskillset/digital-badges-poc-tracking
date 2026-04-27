@@ -1,0 +1,9 @@
+# Rewrite the RFC 5321 envelope sender (MAIL FROM) on ALL outgoing mail
+# to a fixed address we control. The RFC 5322 From: header is NOT
+# touched — recipients still see the tenant's org.email.
+#
+# Referenced from docker-compose.yml (mail service) via:
+#   POSTFIX_sender_canonical_classes=envelope_sender
+#   POSTFIX_sender_canonical_maps=regexp:/etc/postfix/sender_canonical
+# No postmap(1) step is needed for regexp: maps.
+/.+/    notifications@digitalbadges.scot

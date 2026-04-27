@@ -24,11 +24,13 @@ Configure **repository secrets** (Settings → Secrets and variables → Actions
 | `POSTGRES_PASSWORD` | Postgres superuser password for `orcaadmin`. **Use a URL-safe value** (e.g. `openssl rand -hex 24`) — it is embedded in ORCA’s `DATABASE_URL`. |
 | `ORCA_ORG_CONFIG_ENCRYPTION_KEY` | 32 random bytes, base64. `openssl rand -base64 32` — encrypts per-org API keys at rest in ORCA. |
 | `ACME_MYTHICBEASTS_PASSWORD` | Mythic Beasts DNS API secret |
+| `MAIL_SMTP_USERNAME` | Inbound SMTP AUTH username on the in-compose `mail` service (Postfix). Used by both `.env.mail` (`SMTP_USERNAME`) and `.env.orca` (`SMTP_USER`). Any opaque string. |
+| `MAIL_SMTP_PASSWORD` | Inbound SMTP AUTH password for the above username. Generate with e.g. `openssl rand -hex 24`. |
 
 After a successful run, verify on the host:
 
-1. `ls /opt/digital-badges/current/.env.*` lists `.env.signing`, `.env.transaction`, `.env.orca`, `.env.postgres`, and `.env.acme`.
-2. `cd /opt/digital-badges/current && docker compose ps` — `orca` and `postgres` **healthy**, other app services **Up**.
+1. `ls /opt/digital-badges/current/.env.*` lists `.env.signing`, `.env.transaction`, `.env.orca`, `.env.mail`, `.env.postgres`, and `.env.acme`.
+2. `cd /opt/digital-badges/current && docker compose ps` — `orca` and `postgres` **healthy**, other app services (including `mail`) **Up**.
 3. Optional: run `./scripts/issue-certs.sh` from that directory for TLS (`.env.acme` is deployed by CI).
 
 ## Hostname routing
@@ -147,7 +149,7 @@ docker compose exec postgres psql -U orcaadmin orca
 
 ## Troubleshooting
 
-- **Logs:** follow a service with `docker compose logs -f <service>` where `<service>` is one of `nginx`, `orca`, `postgres`, `transaction-service`, `signing-service`, or `redis`. (The `acme` service is usually invoked with `docker compose run` rather than left running.)
+- **Logs:** follow a service with `docker compose logs -f <service>` where `<service>` is one of `nginx`, `orca`, `postgres`, `mail`, `transaction-service`, `signing-service`, or `redis`. (The `acme` service is usually invoked with `docker compose run` rather than left running.)
 - **ORCA uploads:** filesystem-backed media lives in the **`orca-uploads`** named volume (mounted at `/app/dev-uploads` in the `orca` container). It survives `docker compose restart` and is removed only if you delete the volume (e.g. `docker compose down -v` together with other volumes).
 - **Installed certificates:** list what acme.sh has stored with  
   `docker compose run --rm -T acme --list --home /acme.sh`
