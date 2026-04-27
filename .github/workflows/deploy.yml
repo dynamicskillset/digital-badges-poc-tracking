@@ -120,6 +120,7 @@ jobs:
           ALLOW_EMPTY_SENDER_DOMAINS=1
           POSTFIX_sender_canonical_classes=envelope_sender
           POSTFIX_sender_canonical_maps=regexp:/etc/postfix/sender_canonical
+          POSTFIX_smtpd_tls_security_level=none
           EOF
 
       - name: Prepare deployment package
