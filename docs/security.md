@@ -22,8 +22,11 @@ third-party verification.
    characters, complexity requirements) Multi-factor authentication where supported Auto-run and
    auto-execute features disabled
    - ORCA → mail SMTP AUTH travels plaintext over the internal Docker bridge (not over the public
-     network). An adversary with sniff capability on the bridge has already compromised the host;
-     the tradeoff is accepted for PoC.
+     network). The `mail` service explicitly refuses STARTTLS on this inbound submission port
+     (`smtpd_tls_security_level=none` in `.env.mail`), so nodemailer in ORCA never attempts an
+     opportunistic TLS upgrade against a self-signed internal cert. Outbound Postfix→MX TLS
+     (`smtp_tls_security_level=may`) is unaffected. An adversary with sniff capability on the
+     bridge has already compromised the host; the tradeoff is accepted for PoC.
 3. User Access Control Principle of least privilege applied to all accounts Separate administrator
    accounts used only for elevated tasks Standard user accounts for routine work Regular access
    permission reviews Documented access management procedures
