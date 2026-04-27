@@ -57,6 +57,16 @@ services:
     depends_on:
       - redis
       - signing-service
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('net').createConnection(4004,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - digital-badges-network
     restart: unless-stopped
@@ -67,6 +77,16 @@ services:
     container_name: digital-badges-signing
     env_file:
       - .env.signing
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('net').createConnection(4006,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - digital-badges-network
     restart: unless-stopped
@@ -121,6 +141,12 @@ services:
     image: redis:7-alpine
     container_name: digital-badges-redis
     command: redis-server --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     networks:
       - digital-badges-network
     restart: unless-stopped

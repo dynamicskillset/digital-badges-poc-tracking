@@ -195,17 +195,79 @@ jobs:
             docker compose up -d
             echo "::endgroup::"
 
-            echo "::group::⏳ Waiting for services (10s)"
-            sleep 10
+            echo "::group::⏳ Waiting for services to settle"
+            # compose up -d returns as soon as the start commands have been dispatched;
+            # give the scheduler a few seconds before the first status read.
+            sleep 5
             echo "::endgroup::"
 
             echo "::group::✅ Verifying deployment"
-            # Collect container status
-            CONTAINER_STATUS=$(docker compose ps --format json 2>/dev/null || docker compose ps)
-            HEALTHY_COUNT=$(docker compose ps | grep -c "healthy" || echo "0")
-            TOTAL_COUNT=$(docker compose ps -q | wc -l)
+            # Poll docker compose ps --format json until every container is either
+            # OK (running, healthy, or declared no healthcheck) or we hit a firm
+            # failure (exited/dead/restarting/unhealthy). --all so we also notice
+            # containers that exited before the first poll.
+            MAX_WAIT_SECONDS=90
+            POLL_INTERVAL=5
+            ELAPSED=0
+            VERIFY_OUTCOME="pending"
+            CLASSIFIER_SUMMARY=""
 
-            # Write summary file for retrieval
+            while :; do
+              PS_JSON=$(docker compose ps --format json --all 2>/dev/null || true)
+
+              # docker compose ps --format json prints either:
+              #   - a JSON array of objects (newer compose), or
+              #   - one JSON object per line (older compose).
+              # jq -s '.' normalises the per-line form into an array; if it's
+              # already an array, jq passes it through (wrapped in an outer
+              # array, so we unwrap with `.[0]` when appropriate). To keep
+              # parsing robust across both shapes, we pipe through
+              # `jq -cs 'flatten(1)'` which always yields an array of objects.
+              CLASSIFIER_SUMMARY=$(printf '%s\n' "$PS_JSON" | jq -cs 'flatten(1) | map({
+                name: (.Name // .Service // "unknown"),
+                service: (.Service // "unknown"),
+                state: (.State // ""),
+                health: (.Health // "")
+              }) | map(. + {bucket:
+                (if (.state == "exited" or .state == "dead") then "fail"
+                 elif (.state == "restarting") then "fail"
+                 elif (.health == "unhealthy") then "fail"
+                 elif (.health == "starting") then "wait"
+                 else "ok" end)
+              })')
+
+              FAIL_COUNT=$(printf '%s' "$CLASSIFIER_SUMMARY" | jq '[.[] | select(.bucket == "fail")] | length')
+              WAIT_COUNT=$(printf '%s' "$CLASSIFIER_SUMMARY" | jq '[.[] | select(.bucket == "wait")] | length')
+              OK_COUNT=$(printf   '%s' "$CLASSIFIER_SUMMARY" | jq '[.[] | select(.bucket == "ok")]   | length')
+              TOTAL_COUNT=$(printf '%s' "$CLASSIFIER_SUMMARY" | jq 'length')
+
+              if [ "$FAIL_COUNT" -gt 0 ]; then
+                VERIFY_OUTCOME="fail"
+                break
+              fi
+
+              if [ "$WAIT_COUNT" -eq 0 ] && [ "$TOTAL_COUNT" -gt 0 ]; then
+                VERIFY_OUTCOME="ok"
+                break
+              fi
+
+              if [ "$ELAPSED" -ge "$MAX_WAIT_SECONDS" ]; then
+                VERIFY_OUTCOME="timeout"
+                break
+              fi
+
+              echo "waiting: ok=${OK_COUNT} starting=${WAIT_COUNT} fail=${FAIL_COUNT} total=${TOTAL_COUNT} (elapsed=${ELAPSED}s)"
+              sleep "$POLL_INTERVAL"
+              ELAPSED=$((ELAPSED + POLL_INTERVAL))
+            done
+
+            # Human-readable per-container line for logs and step summary.
+            CLASSIFIER_LINES=$(printf '%s' "$CLASSIFIER_SUMMARY" | jq -r '.[] | "\(.service)\t\(.state)\t\(.health)\t\(.bucket)"')
+
+            echo "Container classification:"
+            printf '%s\n' "$CLASSIFIER_LINES"
+
+            # Write summary file for retrieval by the host runner.
             cat > .deploy-summary << SUMMARY_EOF
           ## Deployment Summary
 
@@ -214,7 +276,7 @@ jobs:
           | Deployed At | $(grep DEPLOYED_AT .deploy | cut -d= -f2) |
           | Git Ref | $(grep GIT_REF .deploy | cut -d= -f2) |
           | Git SHA | $(grep GIT_SHA .deploy | cut -d= -f2) |
-          | Containers Healthy | ${HEALTHY_COUNT}/${TOTAL_COUNT} |
+          | Containers Healthy | ${OK_COUNT}/${TOTAL_COUNT} |
           | Rollback Available | $(test -d "${{ env.DEPLOY_DIR }}/rollback" && echo "Yes" || echo "No") |
 
           ### Container Status
@@ -222,13 +284,20 @@ jobs:
           \`\`\`
           $(docker compose ps)
           \`\`\`
+
+          ### Verifier Classification
+
+          \`\`\`
+          service	state	health	bucket
+          ${CLASSIFIER_LINES}
+          \`\`\`
           SUMMARY_EOF
 
-            # Output machine-readable values
+            # Machine-readable outputs consumed by the host runner.
             echo "DEPLOYED_AT=$(grep DEPLOYED_AT .deploy | cut -d= -f2)" >> .deploy-outputs
             echo "GIT_REF=$(grep GIT_REF .deploy | cut -d= -f2)" >> .deploy-outputs
             echo "GIT_SHA=$(grep GIT_SHA .deploy | cut -d= -f2)" >> .deploy-outputs
-            echo "CONTAINERS_HEALTHY=${HEALTHY_COUNT}" >> .deploy-outputs
+            echo "CONTAINERS_HEALTHY=${OK_COUNT}" >> .deploy-outputs
             echo "CONTAINERS_TOTAL=${TOTAL_COUNT}" >> .deploy-outputs
             if [ -d "${{ env.DEPLOY_DIR }}/rollback" ]; then
               echo "ROLLBACK_AVAILABLE=true" >> .deploy-outputs
@@ -236,16 +305,31 @@ jobs:
               echo "ROLLBACK_AVAILABLE=false" >> .deploy-outputs
             fi
 
-            # Verify deployment
-            if [ "$HEALTHY_COUNT" -eq "$TOTAL_COUNT" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
-              echo "::notice::All ${TOTAL_COUNT} containers healthy - deployment successful!"
-              echo "::endgroup::"
-            else
-              echo "::error::Health check failed - only ${HEALTHY_COUNT}/${TOTAL_COUNT} containers healthy"
-              docker compose logs --tail=50
-              echo "::endgroup::"
-              exit 1
-            fi
+            # Final pass/fail decision.
+            case "$VERIFY_OUTCOME" in
+              ok)
+                echo "::notice::All ${TOTAL_COUNT} containers OK - deployment successful (${OK_COUNT} OK, 0 failing, 0 starting)"
+                echo "::endgroup::"
+                ;;
+              fail)
+                echo "::error::Deployment verification failed - ${FAIL_COUNT} of ${TOTAL_COUNT} container(s) in a bad state (ok=${OK_COUNT}, starting=${WAIT_COUNT})"
+                docker compose logs --tail=50
+                echo "::endgroup::"
+                exit 1
+                ;;
+              timeout)
+                echo "::error::Deployment verification timed out after ${MAX_WAIT_SECONDS}s - ${WAIT_COUNT} of ${TOTAL_COUNT} container(s) still 'starting' (ok=${OK_COUNT}, fail=${FAIL_COUNT})"
+                docker compose logs --tail=50
+                echo "::endgroup::"
+                exit 1
+                ;;
+              *)
+                echo "::error::Deployment verification in unknown state: ${VERIFY_OUTCOME}"
+                docker compose logs --tail=50
+                echo "::endgroup::"
+                exit 1
+                ;;
+            esac
           REMOTE_SCRIPT
 
           # Fetch outputs from remote server
