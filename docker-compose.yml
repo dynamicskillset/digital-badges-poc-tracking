@@ -50,7 +50,7 @@ services:
 
   # Transaction Service - External API for wallet flows
   transaction-service:
-    image: skybridgeskills/dcc-transaction-service:latest
+    image: skybridgeskills/dcc-transaction-service@sha256:e73fb6d1c1a466a472d2198f8f99bda871eea20e5e3d89a29efca4477066f0af
     container_name: digital-badges-transaction
     env_file:
       - .env.transaction
@@ -95,7 +95,7 @@ services:
   # (routing added in a separate phase). Apex digitalbadges.scot is
   # intentionally not routed to ORCA.
   orca:
-    image: skybridgeskills/orca:latest
+    image: skybridgeskills/orca@sha256:ac0e4f5c7e2e1f4a01d6ca4e44faab8523e5fdbb4014c48b54ad5d2d57fd5f69
     container_name: digital-badges-orca
     env_file:
       - .env.orca
