@@ -54,6 +54,8 @@ services:
     container_name: digital-badges-transaction
     env_file:
       - .env.transaction
+    environment:
+      DEFAULT_EXCHANGE_HOST: https://api.digitalbadges.scot
     depends_on:
       - redis
       - signing-service
