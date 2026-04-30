@@ -56,7 +56,6 @@ jobs:
           # Auto-generated from template - DO NOT EDIT MANUALLY
           DEFAULT_EXCHANGE_HOST=http://localhost:4004
           REDIS_URI=redis://redis:6379
-          STATUS_SERVICE=http://signing-service:4006
           KEYV_WRITE_DELAY=50
           TENANT_TOKEN_DEFAULT=${{ secrets.API_TENANT_TOKEN_DEFAULT }}
           TENANT_TOKEN_TESTING=${{ secrets.API_TENANT_TOKEN_TESTING }}
